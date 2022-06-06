@@ -9,6 +9,15 @@ Data-driven regression based on artificial intelligence
 
 ---
 
+### Developers
+* **A. Giuffre'**, PhD Researcher, Propulsion & Power, TU Delft
+* **E. Bunschoten**, PhD Researcher, Propulsion & Power, TU Delft
+* **A. Cappiello**, Post-Doc Researcher, Propulsion & Power, TU Delft
+* **M. Majer**, PhD Researcher, Propulsion & Power, TU Delft
+* **M. Pini**, Assistant Professor, Propulsion & Power, TU Delft
+
+---
+
 ### Pre-requisites
 ##### [Python 3.x](https://python.org)
 ##### [NumPy](https://numpy.org)
