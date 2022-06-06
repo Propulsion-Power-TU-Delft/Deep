@@ -1,4 +1,16 @@
 # Default ignored files
 /workspace.xml
 
-.idea
+# Compiled Python bytecode
+*.py[cod]
+
+# JetBrains IDE
+.idea/
+
+# data, plots, and trained models stored in application folders
+/applications/EoS/data/
+/applications/EoS/plots/
+/applications/EoS/models/
+/applications/CentrifugalCompressor/data/
+/applications/CentrifugalCompressor/plots/
+/applications/CentrifugalCompressor/models/

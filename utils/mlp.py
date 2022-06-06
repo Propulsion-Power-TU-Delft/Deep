@@ -18,7 +18,7 @@ class MLP:
     Create a Multi-Layer Perceptron model with custom architecture
     """
     def __init__(self, X_train, X_dev, Y_train, Y_dev, L, nl, n_epochs, activation='relu', w_init='he_uniform',
-                 alpha=0.001, lr_decay=1.0, decay_steps=100000, staircase=False, batch_size=64, batch_norm=0,
+                 alpha=3, lr_decay=1.0, decay_steps=100000, staircase=False, batch_size=6, batch_norm=0,
                  regularization=0, max_norm=4, dropout_prob=[]):
         """
         :param X_train: array of input features used for the training set
@@ -30,11 +30,12 @@ class MLP:
         :param n_epochs: number of epochs used to train the neural network
         :param activation: activation function used in each layer of the ann, except for the output layer
         :param w_init: method used to initialize the weights of the ann
-        :param alpha: (initial) learning rate used in Adam optimizer
+        :param alpha: (initial) learning rate used in Adam optimizer --> 10 ** (- alpha)
         :param lr_decay: learning rate decay used to define the exponential decay schedule; if 1, there is no decay
         :param decay_steps: the learning rate drops significantly every decay_steps
         :param staircase: if True, the learning rate drops following a staircase instead of a continuous function
         :param batch_size: number of samples evaluated during training before updating the weights of the neural network
+            --> 2 ** batch_size
         :param batch_norm:
             if 0, don't batch normalization;
             if 1, apply batch normalization to each hidden layer (before the activation function);
@@ -56,11 +57,11 @@ class MLP:
         self.n_epochs = n_epochs
         self.activation = activation
         self.w_init = w_init
-        self.alpha = alpha
+        self.alpha = 10 ** (- alpha)
         self.lr_decay = lr_decay
         self.decay_steps = decay_steps
         self.staircase = staircase
-        self.batch_size = batch_size
+        self.batch_size = 2 ** batch_size
         self.batch_norm = batch_norm
         self.regularization = regularization
         self.max_norm = max_norm
@@ -299,8 +300,11 @@ class MLP:
         self.history = self.model.fit(self.X_train, self.Y_train, epochs=self.n_epochs, batch_size=self.batch_size,
                                       verbose=verbose, validation_data=(self.X_dev, self.Y_dev), shuffle=True)
 
-    def plot_training_history(self):
-        """ Plot training history """
+    def plot_training_history(self, plot_dir):
+        """
+        Plot training history
+        :param plot_dir: directory to save plots
+        """
         n_plots = 2
         new_colors = [plt.get_cmap('viridis')(1. * i / n_plots) for i in range(n_plots)]
 
@@ -311,8 +315,7 @@ class MLP:
         ax.set_ylabel('Loss')
         ax.grid(1)
         plt.legend(loc='upper right')
-        fig.savefig(os.path.join('plots', 'MLP', 'training_history.jpeg'), dpi=400)
-        fig.savefig(os.path.join('plots', 'MLP', 'training_history.tiff'))
+        fig.savefig(os.path.join(plot_dir, 'training_history.jpeg'), dpi=400)
         plt.close(fig)
 
 

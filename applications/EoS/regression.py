@@ -17,12 +17,13 @@ from matplotlib import cm
 import matplotlib.pyplot as plt
 from sklearn.utils import shuffle
 from sklearn.preprocessing import MinMaxScaler
+from torch.utils.data import TensorDataset, DataLoader
 
 
 # user-defined input
 dev_size = 5                # percentage of total dataset used for the dev set
 test_size = 5               # percentage of total dataset used for the test set
-model_type = 'MLP'          # 'MLP' or 'GP'
+model_type = 'GP'           # 'MLP' or 'GP'
 data_folder = 'MM_250k'     # name of the folder collecting the dataset
 data_type = '1phase'        # '1phase', '2phase', or 'full'
 
@@ -85,6 +86,9 @@ pickle.dump(Y_scaler, open(os.path.join('data', data_folder, 'Y_scaler_' + data_
 
 sns.set_style("darkgrid")
 sns.set_context("paper")
+plot_dir = os.path.join('plots', model_type, data_folder + '_' + data_type)
+if not os.path.isdir(plot_dir):
+    os.makedirs(plot_dir)
 
 # plot input features distribution
 fig1, axs1 = plt.subplots(2, 2, figsize=(8, 10))
@@ -107,7 +111,7 @@ ax11 = sns.histplot(X_train_norm[:, 1], ax=axs1[1, 1], color=new_colors[1])
 ax11.set_xlabel('e norm [-]')
 ax11.set_yticklabels([])
 ax11.set_ylabel('')
-fig1.savefig('plots/features_distribution.jpeg', dpi=400)
+fig1.savefig(os.path.join(plot_dir, 'features_distribution.jpeg'), dpi=400)
 plt.close(fig1)
 
 # plot labels distribution
@@ -139,7 +143,7 @@ ax12 = sns.histplot(Y_train[:, 5], ax=axs2[1, 2], color=new_colors[5])
 ax12.set_xlabel('d2s/drho2')
 ax12.set_yticklabels([])
 ax12.set_ylabel('')
-fig2.savefig('plots/labels_distribution.jpeg', dpi=400)
+fig2.savefig(os.path.join(plot_dir, 'labels_distribution.jpeg'), dpi=400)
 plt.close(fig2)
 
 # plot normalized labels distribution
@@ -171,7 +175,7 @@ ax12 = sns.histplot(Y_train_norm[:, 5], ax=axs3[1, 2], color=new_colors[5])
 ax12.set_xlabel('d2s/drho2 norm')
 ax12.set_yticklabels([])
 ax12.set_ylabel('')
-fig3.savefig('plots/norm_labels_distribution.jpeg', dpi=400)
+fig3.savefig(os.path.join(plot_dir, 'norm_labels_distribution.jpeg'), dpi=400)
 plt.close(fig3)
 
 # ------------------------------------------------------------------------------------------------------------------- #
@@ -183,14 +187,14 @@ if model_type == 'MLP':
     # hyper-parameters
     L = 4
     nl = [30, 50, 50, 30]
-    n_epochs = 100
-    alpha = 10 ** (-4)
+    n_epochs = 10
+    alpha = 4
     lr_decay = 0.95
     decay_steps = 10000
-    batch_size = 2 ** 7
+    batch_size = 7
     batch_norm = 0
     reg = 0
-    dropout_prob = [0.99, 0.8, 0.8, 0.8, 0.8]
+    dropout_prob = [0.99, 0.8, 0.8, 0.8]
     staircase = False
     max_norm = 4
 
@@ -213,33 +217,51 @@ if model_type == 'MLP':
     model.train_model()
 
     # save and plot results
-    model_dir = os.path.join('models', 'MLP', data_folder + data_type)
+    model_dir = os.path.join('models', 'MLP', data_folder + '_' + data_type)
     if not os.path.isdir(model_dir):
         os.makedirs(model_dir)
 
     pickle.dump(model.history.history, open(os.path.join(model_dir, 'training_history'), 'wb'))
     model.model.save(model_dir)
-    model.plot_training_history()
+    model.plot_training_history(plot_dir)
 
 # ------------------------------------------------------------------------------------------------------------------- #
 
-# Gaussian Process: multi-output with derivative information
+# Gaussian Process: train a stochastic variational GP for each output
 
 if model_type == 'GP':
 
     # hyper-parameters
-    epochs = 250
+    epochs = 10
     alpha = 0.05
+    batch_size = 10
+    n_inducing = 500
 
-    # Convert train, dev, and test sets in GPyTorch format
-    X_train_norm = torch.Tensor(X_train_norm)
-    Y_train_norm = torch.Tensor(Y_train_norm)
+    # train-test split + tensor definitions
+    train_x = torch.Tensor(X_train_norm)
+    train_y = torch.Tensor(Y_train[:, 0])
+    test_x = torch.Tensor(X_test_norm)
+    test_y = torch.Tensor(Y_test[:, 0])
 
-    lh = gpytorch.likelihoods.MultitaskGaussianLikelihood(num_tasks=6)
-    model = GPModelWithDerivatives(X_train_norm, Y_train_norm, lh, 2)
-    train_gp(model, lh, X_train_norm, Y_train_norm, epochs, alpha)
+    # load train-test tensors
+    train_dataset = TensorDataset(train_x, train_y)
+    train_loader = DataLoader(train_dataset, batch_size=int(2 ** batch_size), shuffle=True)
+    test_dataset = TensorDataset(test_x, test_y)
+    test_loader = DataLoader(test_dataset, batch_size=int(2 ** batch_size), shuffle=False)
+
+    # define model
+    inducing_points = train_x[:n_inducing, :].contiguous()
+    model = StochasticVariationalGP(inducing_points, X_train.shape[1], 'rbf')
+    likelihood = gpytorch.likelihoods.GaussianLikelihood()
+
+    # train the model
+    train_variational_gp(model, likelihood, train_loader, X_train.shape[0], epochs, alpha)
 
     # save trained model
-    torch.save(model.state_dict(), os.path.join('models', 'GP', data_type, 'model_state.pth'))
+    model_dir = os.path.join('models', 'GP', data_folder + '_' + data_type)
+    if not os.path.isdir(model_dir):
+        os.makedirs(model_dir)
+
+    torch.save(model.state_dict(), os.path.join(model_dir, 'model_state.pth'))
 
 # ------------------------------------------------------------------------------------------------------------------- #

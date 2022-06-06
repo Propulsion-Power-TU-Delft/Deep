@@ -11,40 +11,59 @@
 import torch
 import gpytorch
 import numpy as np
+from gpytorch.models import ApproximateGP
+from gpytorch.variational import CholeskyVariationalDistribution, VariationalStrategy
 
 
-class GPModelWithDerivatives(gpytorch.models.ExactGP):
+class StochasticVariationalGP(ApproximateGP):
     """
-    Define a Multi-Output Regression Gaussian Process that will be trained with function values and derivatives
+    Create a Stochastic Variational Gaussian Process with custom architecture
     """
-    def __init__(self, train_x, train_y, likelihood, nx):
+    def __init__(self, inducing_points, n_features, kernel_type, nu_matern=2.5, custom_kernel=None):
         """
-        :param train_x: input features from the training set
-        :param train_y: labels from the training set
-        :param likelihood:
-        :param nx: number of input features
+        :param n_features: number of input features
+        :param inducing_points: first guess of inducing points --> the only relevant information is their number
+        :param kernel_type: type of kernel defining the prior covariance of the Gaussian Process
+        :param nu_matern: smoothness parameter for the Matern kernel: 0.5, 1.5, or 2.5
+        :param custom_kernel: custom kernel object prescribed by the user
         """
-        super(GPModelWithDerivatives, self).__init__(train_x, train_y, likelihood)
-        self.mean_module = gpytorch.means.ConstantMeanGrad()                    # define mean
-        self.base_kernel = gpytorch.kernels.RBFKernelGrad(ard_num_dims=nx)      # define kernel
-        self.covar_module = gpytorch.kernels.ScaleKernel(self.base_kernel)
+        variational_distribution = CholeskyVariationalDistribution(inducing_points.size(0))
+        variational_strategy = VariationalStrategy(self, inducing_points, variational_distribution,
+                                                   learn_inducing_locations=True)
+
+        super(StochasticVariationalGP, self).__init__(variational_strategy)
+        self.mean_module = gpytorch.means.ConstantMean()
+
+        if kernel_type == 'rbf':
+            self.covar_module = gpytorch.kernels.ScaleKernel(gpytorch.kernels.RBFKernel(ard_num_dims=n_features,
+                                                                                        learn_length_scales=True))
+        elif kernel_type == 'matern':
+            self.covar_module = gpytorch.kernels.ScaleKernel(gpytorch.kernels.MaternKernel(ard_num_dims=n_features,
+                                                                                           learn_length_scales=True,
+                                                                                           nu=nu_matern))
+        elif kernel_type == 'custom':
+            self.covar_module = custom_kernel
+        else:
+            raise NotImplementedError("Currently, the available options for the parameter kernel_type are: "
+                                      "'rbf', 'matern', or 'custom'")
 
     def forward(self, x):
         mean_x = self.mean_module(x)
         covar_x = self.covar_module(x)
 
-        return gpytorch.distributions.MultitaskMultivariateNormal(mean_x, covar_x)
+        return gpytorch.distributions.MultivariateNormal(mean_x, covar_x)
 
 
-def train_gp(model, likelihood, train_x, train_y, epochs, alpha):
+def train_variational_gp(model, likelihood, train_loader, n_train, epochs, alpha, eps=2):
     """
+    Train a prescribed stochastic variational Gaussian Process, given the training set
     :param model: gaussian process model
     :param likelihood:
-    :param train_x: input features from the training set
-    :param train_y: labels from the training set
+    :param train_loader: training set (features + labels), already structured in mini-batches
+    :param n_train: number of training examples
     :param epochs: number of epochs used for training
     :param alpha: learning rate
-    :return:
+    :param eps: prescribed tolerance over the loss function, used to determine convergence and stop training
     """
     # Set training mode
     model.train()
@@ -53,21 +72,24 @@ def train_gp(model, likelihood, train_x, train_y, epochs, alpha):
     # Use the adam optimizer
     optimizer = torch.optim.Adam(model.parameters(), lr=alpha)  # Includes GaussianLikelihood parameters
 
-    # "Loss" for GPs - the marginal log likelihood
-    mll = gpytorch.mlls.ExactMarginalLogLikelihood(likelihood, model)
+    # Loss function for variational GPs
+    mll = gpytorch.mlls.VariationalELBO(likelihood, model, num_data=n_train)
 
+    # Iterate over the prescribed number of epochs
     for i in range(epochs):
-        optimizer.zero_grad()
-        output = model(train_x)
-        loss = -mll(output, train_y)
-        loss.backward()
-        print("Iter %d/%d - Loss: %.3f   lengthscales: %.3f, %.3f   noise: %.3f" % (
-            i + 1, epochs, loss.item(),
-            model.covar_module.base_kernel.lengthscale.squeeze()[0],
-            model.covar_module.base_kernel.lengthscale.squeeze()[1],
-            model.likelihood.noise.item()
-        ))
-        optimizer.step()
+
+        # Within each iteration, iterate over the prescribed mini-batches of data
+        for x_batch, y_batch in train_loader:
+            optimizer.zero_grad()
+            output = model(x_batch)
+            loss = -mll(output, y_batch)
+            loss.backward()
+            optimizer.step()
+
+        # Check the convergence criterion at the end of each epoch
+        print("Iter %d/%d - Loss: %.3f" % (i + 1, epochs, loss.item()))
+        if loss < -eps:
+            break
 
 
 def predict_gp(model, likelihood, X, X_scaler, Y_scaler):
