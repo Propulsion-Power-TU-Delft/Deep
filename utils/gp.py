@@ -10,11 +10,10 @@
 
 import torch
 import gpytorch
-import numpy as np
 from gpytorch.models import ApproximateGP
 from gpytorch.variational import CholeskyVariationalDistribution, VariationalStrategy
 
-# TODO: FIX predict_gp, ADD FUNCTION TO SAVE TRAINING HISTORY
+# TODO: ADD FUNCTION TO SAVE TRAINING HISTORY
 
 
 class StochasticVariationalGP(ApproximateGP):
@@ -92,32 +91,3 @@ def train_variational_gp(model, likelihood, train_loader, n_train, epochs, alpha
         print("Iter %d/%d - Loss: %.3f" % (i + 1, epochs, loss.item()))
         if loss < -eps:
             break
-
-
-def predict_gp(model, likelihood, X, X_scaler, Y_scaler):
-    """
-    :param model:
-    :param likelihood:
-    :param X:
-    :param X_scaler:
-    :param Y_scaler:
-    :return:
-    """
-    # Set into eval mode
-    model.eval()
-    likelihood.eval()
-
-    # Normalize X and convert it in GPyTorch format
-    X_norm = torch.Tensor(X_scaler.transform(X))
-
-    # Make predictions
-    with torch.no_grad(), gpytorch.settings.fast_computations(log_prob=False, covar_root_decomposition=False):
-        predictions = likelihood(model(X_norm))
-        mean = predictions.mean
-        var = predictions.variance
-
-    mean = Y_scaler.inverse_transform(mean)
-    mean[:, 2] = - np.exp(mean[:, 2])
-    mean[:, 5] = np.exp(mean[:, 5])
-
-    return mean, var

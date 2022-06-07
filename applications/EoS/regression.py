@@ -233,12 +233,13 @@ if model_type == 'GP':
 
     # hyper-parameters
     epochs = 10
-    alpha = 2
+    alpha = 1
     batch_size = 10
-    n_inducing = 1000
+    n_inducing = 500
+    kernel = 'rbf'
 
     # iterate over labels
-    labels = ['s', 'ds/de', 'ds/drho', 'd2s/de.drho', 'd2s/de2', 'd2s/drho2']
+    labels = ['s', 'ds_de', 'ds_drho', 'd2s_de_drho', 'd2s_de2', 'd2s_drho2']
 
     for ii, label in enumerate(labels):
 
@@ -246,9 +247,9 @@ if model_type == 'GP':
 
         # tensors definition
         train_x = torch.Tensor(X_train_norm)
-        train_y = torch.Tensor(Y_train_norm[:, ii])
+        train_y = torch.Tensor(Y_train[:, ii])
         test_x = torch.Tensor(X_test_norm)
-        test_y = torch.Tensor(Y_test_norm[:, ii])
+        test_y = torch.Tensor(Y_test[:, ii])
 
         # define dataset and mini-batches
         train_dataset = TensorDataset(train_x, train_y)
@@ -258,7 +259,7 @@ if model_type == 'GP':
 
         # define model
         inducing_points = train_x[:n_inducing, :].contiguous()
-        model = StochasticVariationalGP(inducing_points, X_train.shape[1], 'rbf')
+        model = StochasticVariationalGP(inducing_points, X_train.shape[1], kernel)
         likelihood = gpytorch.likelihoods.GaussianLikelihood()
 
         # train the model
@@ -269,6 +270,6 @@ if model_type == 'GP':
         if not os.path.isdir(model_dir):
             os.makedirs(model_dir)
 
-        torch.save(model.state_dict(), os.path.join(model_dir, 'model_state' + str(ii) + '.pth'))
+        torch.save(model.state_dict(), os.path.join(model_dir, 'model_state_' + label + '.pth'))
 
 # ------------------------------------------------------------------------------------------------------------------- #

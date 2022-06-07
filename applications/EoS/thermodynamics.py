@@ -8,10 +8,12 @@
 # 2022 - TU Delft - All rights reserved
 ########################################################################################################################
 
+import torch
+import gpytorch
 import numpy as np
 
 
-def multi_output_primary_props(model, X, X_scaler, Y_scaler):
+def predict_mlp(model, X, X_scaler, Y_scaler):
     """
     Evaluate the primary thermodynamic properties by resorting to a multi-output regression model
     :param model: pre-trained data-driven model, featuring 6 outputs
@@ -54,3 +56,52 @@ def multi_output_primary_props(model, X, X_scaler, Y_scaler):
     primary_props = np.vstack((P, T, h, c)).T
 
     return Y, primary_props
+
+
+def predict_gp(models, likelihood, X, X_scaler):
+    """
+    :param models:
+    :param likelihood:
+    :param X:
+    :param X_scaler:
+    :return:
+    """
+    rho = X[:, 0]
+    e = X[:, 1]
+
+    # Normalize X and convert it in GPyTorch format
+    X_norm = torch.Tensor(X_scaler.transform(X))
+
+    # Initialize arrays of results
+    Y_mean = np.zeros((X.shape[0], 6))
+    Y_var = np.zeros((X.shape[0], 6))
+    primary_props = np.zeros((X.shape[0], 4))
+
+    for ii, model in enumerate(models):
+        model.eval()
+        likelihood.eval()
+
+        # Make predictions
+        with torch.no_grad(), gpytorch.settings.fast_computations(log_prob=False, covar_root_decomposition=False):
+            predictions = likelihood(model(X_norm))
+            Y_mean[:, ii] = predictions.mean
+            Y_var[:, ii] = predictions.variance
+
+    # evaluation of primary thermodynamic properties
+    s = Y_mean[:, 0]
+    ds_de = Y_mean[:, 1]
+    ds_drho = Y_mean[:, 2]
+    d2s_dedrho = Y_mean[:, 3]
+    d2s_de2 = Y_mean[:, 4]
+    d2s_drho2 = Y_mean[:, 5]
+
+    blue_term = (ds_drho * (2 - rho * (ds_de ** (-1)) * d2s_dedrho) + rho * d2s_drho2)
+    green_term = (- (ds_de ** (-1)) * d2s_de2 * ds_drho + d2s_dedrho)
+    c = np.sqrt(- rho * (ds_de ** (-1)) * (blue_term - rho * green_term * (ds_drho / ds_de)))
+    T = 1 / ds_de
+    P = - (rho ** 2) * T * ds_drho
+    h = e + P / rho
+
+    primary_props = np.vstack((P, T, h, c)).T
+
+    return Y_mean, Y_var, primary_props

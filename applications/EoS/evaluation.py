@@ -20,7 +20,7 @@ from thermodynamics import *
 # TODO: IMPLEMENT EVALUATION FOR GPs
 
 # user-defined input
-model_type = 'MLP'           # 'MLP' or 'GP'
+model_type = 'GP'           # 'MLP' or 'GP'
 data_folder = 'MM_250k'     # name of the folder collecting the dataset
 data_type = '1phase'        # '1phase', '2phase', or 'full'
 
@@ -49,14 +49,38 @@ if model_type == 'MLP':
     model.summary()
 
 elif model_type == 'GP':
-    raise NotImplementedError("Evaluation with GP not implemented yet")
-#     lh = gpytorch.likelihoods.MultitaskGaussianLikelihood(num_tasks=6)
-#     model = GPModelWithDerivatives(None, None, lh, 2)
-#     state_dict = torch.load(os.path.join('models', 'GP', data_type, 'model_state.pth'))
-#     model.load_state_dict(state_dict)
-#
-#     Y_hat_test_mean, _ = predict_gp(model, lh, torch.Tensor(X_test), X_scaler, Y_scaler)
-#     pct_error = (Y_test - Y_hat_test_mean) / Y_test * 100
+
+    # user-defined input
+    n_inducing = 500        # number of inducing points used to train the GPs
+    kernel = 'rbf'          # kernel used to define the GPs during training
+
+    # iterate over labels
+    labels = ['s', 'ds/de', 'ds/drho', 'd2s/de.drho', 'd2s/de2', 'd2s/drho2']
+
+    # define model(s)
+    inducing_points = torch.Tensor(X_train[:n_inducing, :])
+    likelihood = gpytorch.likelihoods.GaussianLikelihood()
+    model_s = StochasticVariationalGP(inducing_points, X_train.shape[1], kernel)
+    model_ds_de = StochasticVariationalGP(inducing_points, X_train.shape[1], kernel)
+    model_ds_drho = StochasticVariationalGP(inducing_points, X_train.shape[1], kernel)
+    model_d2s_de_drho = StochasticVariationalGP(inducing_points, X_train.shape[1], kernel)
+    model_d2s_de2 = StochasticVariationalGP(inducing_points, X_train.shape[1], kernel)
+    model_d2s_drho2 = StochasticVariationalGP(inducing_points, X_train.shape[1], kernel)
+
+    # load state(s) of pre-trained model(s)
+    state_s = torch.load(os.path.join('models', 'GP', data_folder + '_' + data_type, 'model_state_s.pth'))
+    state_ds_de = torch.load(os.path.join('models', 'GP', data_folder + '_' + data_type, 'model_state_ds_de.pth'))
+    state_ds_drho = torch.load(os.path.join('models', 'GP', data_folder + '_' + data_type, 'model_state_ds_drho.pth'))
+    state_d2s_de_drho = torch.load(os.path.join('models', 'GP', data_folder + '_' + data_type, 'model_state_d2s_de_drho.pth'))
+    state_d2s_de2 = torch.load(os.path.join('models', 'GP', data_folder + '_' + data_type, 'model_state_d2s_de2.pth'))
+    state_d2s_drho2 = torch.load(os.path.join('models', 'GP', data_folder + '_' + data_type, 'model_state_d2s_drho2.pth'))
+    model_s.load_state_dict(state_s)
+    model_ds_de.load_state_dict(state_ds_de)
+    model_ds_drho.load_state_dict(state_ds_drho)
+    model_d2s_de_drho.load_state_dict(state_d2s_de_drho)
+    model_d2s_de2.load_state_dict(state_d2s_de2)
+    model_d2s_drho2.load_state_dict(state_d2s_drho2)
+    models = [model_s, model_ds_de, model_ds_drho, model_d2s_de_drho, model_d2s_de2, model_d2s_drho2]
 
 # ------------------------------------------------------------------------------------------------------------------- #
 
@@ -65,7 +89,7 @@ elif model_type == 'GP':
 if model_type == 'MLP':
 
     # evaluate accuracy with respect to ground true labels of test set
-    Y_hat_test, _ = multi_output_primary_props(model, X_test, X_scaler, Y_scaler)
+    Y_hat_test, _ = predict_mlp(model, X_test, X_scaler, Y_scaler)
     error = Y_hat_test - Y_test
     abs_error = np.abs(error)
     pct_error = error / Y_test * 100
@@ -82,7 +106,7 @@ if model_type == 'MLP':
 
     # evaluate accuracy and computational cost in terms of evaluation of primary properties
     start = time.time()
-    _, primary_hat = multi_output_primary_props(model, primary_props[:, :2], X_scaler, Y_scaler)
+    _, primary_hat = predict_mlp(model, primary_props[:, :2], X_scaler, Y_scaler)
     end = time.time()
 
     error_primary = primary_hat - primary_props[:, 3:]
@@ -115,7 +139,57 @@ if model_type == 'MLP':
     print('Single call: %10.6f' % ((end - start) / primary_props.shape[0]))
 
 elif model_type == 'GP':
-    raise NotImplementedError("Evaluation with GP not implemented yet")
+
+    # evaluate accuracy with respect to ground true labels of test set
+    Y_mean_test, Y_var_test, _ = predict_gp(models, likelihood, X_test, X_scaler)
+    error = Y_mean_test - Y_test
+    abs_error = np.abs(error)
+    pct_error = error / Y_test * 100
+    abs_pct_error = abs_error / np.abs(Y_test) * 100
+
+    print('\nMean Absolute Percentage Error [%]')
+    print('\nLabels')
+    print('s          : %10.4f' % np.mean(abs_pct_error[:, 0]))
+    print('ds/de      : %10.4f' % np.mean(abs_pct_error[:, 1]))
+    print('ds/drho    : %10.4f' % np.mean(abs_pct_error[:, 2]))
+    print('d2s/de.drho: %10.4f' % np.mean(abs_pct_error[:, 3]))
+    print('d2s/de2    : %10.4f' % np.mean(abs_pct_error[:, 4]))
+    print('d2s/drho2  : %10.4f' % np.mean(abs_pct_error[:, 5]))
+
+    # commented because of excessive computational cost
+    # # evaluate accuracy and computational cost in terms of evaluation of primary properties
+    # start = time.time()
+    # _, _, primary_hat = predict_gp(models, likelihood, primary_props[:, :2], X_scaler)
+    # end = time.time()
+    #
+    # error_primary = primary_hat - primary_props[:, 3:]
+    # abs_error_primary = np.abs(error_primary)
+    # pct_error_primary = error_primary / primary_props[:, 3:] * 100
+    # abs_pct_error_primary = abs_error_primary / np.abs(primary_props[:, 3:]) * 100
+    #
+    # if data_type == '1phase':
+    #
+    #     # remove two-phase region from evaluation of accuracy over the entire dataset
+    #     mask = primary_props[:, 2] >= 1
+    #     error_primary[np.logical_not(mask)] = np.nan
+    #     abs_error_primary[np.logical_not(mask)] = np.nan
+    #     pct_error_primary[np.logical_not(mask)] = np.nan
+    #     abs_pct_error_primary[np.logical_not(mask)] = np.nan
+    #     print('\nPrimary properties')
+    #     print('P          : %10.4f' % np.mean(abs_pct_error_primary[mask, 0]))
+    #     print('T          : %10.4f' % np.mean(abs_pct_error_primary[mask, 1]))
+    #     print('h          : %10.4f' % np.mean(abs_pct_error_primary[mask, 2]))
+    #     print('c          : %10.4f' % np.mean(abs_pct_error_primary[mask, 3]))
+    # else:
+    #     print('\nPrimary properties')
+    #     print('P          : %10.4f' % np.mean(abs_pct_error_primary[:, 0]))
+    #     print('T          : %10.4f' % np.mean(abs_pct_error_primary[:, 1]))
+    #     print('h          : %10.4f' % np.mean(abs_pct_error_primary[:, 2]))
+    #     print('c          : %10.4f' % np.mean(abs_pct_error_primary[:, 3]))
+    #
+    # print('\nComputational cost [s]')
+    # print('Global     : %10.6f' % (end - start))
+    # print('Single call: %10.6f' % ((end - start) / primary_props.shape[0]))
 
 # ------------------------------------------------------------------------------------------------------------------- #
 
