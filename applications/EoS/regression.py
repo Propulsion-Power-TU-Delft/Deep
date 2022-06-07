@@ -2,9 +2,9 @@
 # -*- coding: utf-8 -*-
 
 ########################################################################################################################
-# DeepData: data-driven regression based on artificial intelligence
-# Author: ir. A. Giuffre'
-# Content: Classes to create, train, and optimize a Multi-Layer Perceptron artificial neural network
+# DeepData: data-driven equation of state application
+# Authors: ir. A. Giuffre', ir. E. Bunschoten, Dr. ir. A. Cappiello, ir. M. Majer, Dr. ir. M. Pini
+# Content: Load and pre-process the dataset, train and save the selected model
 # 2022 - TU Delft - All rights reserved
 ########################################################################################################################
 
@@ -233,35 +233,42 @@ if model_type == 'GP':
 
     # hyper-parameters
     epochs = 10
-    alpha = 0.05
+    alpha = 2
     batch_size = 10
-    n_inducing = 500
+    n_inducing = 1000
 
-    # train-test split + tensor definitions
-    train_x = torch.Tensor(X_train_norm)
-    train_y = torch.Tensor(Y_train[:, 0])
-    test_x = torch.Tensor(X_test_norm)
-    test_y = torch.Tensor(Y_test[:, 0])
+    # iterate over labels
+    labels = ['s', 'ds/de', 'ds/drho', 'd2s/de.drho', 'd2s/de2', 'd2s/drho2']
 
-    # load train-test tensors
-    train_dataset = TensorDataset(train_x, train_y)
-    train_loader = DataLoader(train_dataset, batch_size=int(2 ** batch_size), shuffle=True)
-    test_dataset = TensorDataset(test_x, test_y)
-    test_loader = DataLoader(test_dataset, batch_size=int(2 ** batch_size), shuffle=False)
+    for ii, label in enumerate(labels):
 
-    # define model
-    inducing_points = train_x[:n_inducing, :].contiguous()
-    model = StochasticVariationalGP(inducing_points, X_train.shape[1], 'rbf')
-    likelihood = gpytorch.likelihoods.GaussianLikelihood()
+        print('\nTraining Gaussian Process to predict: ' + label + ' ...')
 
-    # train the model
-    train_variational_gp(model, likelihood, train_loader, X_train.shape[0], epochs, alpha)
+        # tensors definition
+        train_x = torch.Tensor(X_train_norm)
+        train_y = torch.Tensor(Y_train_norm[:, ii])
+        test_x = torch.Tensor(X_test_norm)
+        test_y = torch.Tensor(Y_test_norm[:, ii])
 
-    # save trained model
-    model_dir = os.path.join('models', 'GP', data_folder + '_' + data_type)
-    if not os.path.isdir(model_dir):
-        os.makedirs(model_dir)
+        # define dataset and mini-batches
+        train_dataset = TensorDataset(train_x, train_y)
+        train_loader = DataLoader(train_dataset, batch_size=int(2 ** batch_size), shuffle=True)
+        test_dataset = TensorDataset(test_x, test_y)
+        test_loader = DataLoader(test_dataset, batch_size=int(2 ** batch_size), shuffle=False)
 
-    torch.save(model.state_dict(), os.path.join(model_dir, 'model_state.pth'))
+        # define model
+        inducing_points = train_x[:n_inducing, :].contiguous()
+        model = StochasticVariationalGP(inducing_points, X_train.shape[1], 'rbf')
+        likelihood = gpytorch.likelihoods.GaussianLikelihood()
+
+        # train the model
+        train_variational_gp(model, likelihood, train_loader, X_train.shape[0], epochs, alpha)
+
+        # save trained model
+        model_dir = os.path.join('models', 'GP', data_folder + '_' + data_type)
+        if not os.path.isdir(model_dir):
+            os.makedirs(model_dir)
+
+        torch.save(model.state_dict(), os.path.join(model_dir, 'model_state' + str(ii) + '.pth'))
 
 # ------------------------------------------------------------------------------------------------------------------- #
