@@ -75,7 +75,6 @@ def predict_gp(models, likelihood, X, X_scaler):
     # Initialize arrays of results
     Y_mean = np.zeros((X.shape[0], 6))
     Y_var = np.zeros((X.shape[0], 6))
-    primary_props = np.zeros((X.shape[0], 4))
 
     for ii, model in enumerate(models):
         model.eval()

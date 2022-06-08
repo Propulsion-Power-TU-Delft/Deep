@@ -315,7 +315,8 @@ class MLP:
         ax.set_ylabel('Loss')
         ax.grid(1)
         plt.legend(loc='upper right')
-        fig.savefig(os.path.join(plot_dir, 'training_history.jpeg'), dpi=400)
+        fig.savefig(os.path.join(plot_dir, 'jpeg', 'training_history.jpeg'), dpi=400)
+        fig.savefig(os.path.join(plot_dir, 'tiff', 'training_history.tiff'))
         plt.close(fig)
 
 

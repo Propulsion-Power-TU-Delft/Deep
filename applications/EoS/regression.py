@@ -9,6 +9,7 @@
 ########################################################################################################################
 
 import pickle
+import numpy as np
 import seaborn as sns
 from utils.gp import *
 import tensorflow as tf
