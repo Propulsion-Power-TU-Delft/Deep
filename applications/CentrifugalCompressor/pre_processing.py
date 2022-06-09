@@ -9,9 +9,11 @@
 ########################################################################################################################
 
 import os
+import pickle
 import numpy as np
-import scipy.stats
+import matplotlib.pyplot as plt
 from sklearn.utils import shuffle
+from sklearn.linear_model import LinearRegression
 from sklearn.preprocessing import StandardScaler, MinMaxScaler
 
 
@@ -40,8 +42,8 @@ def get_data(data_folders):
     return X, Y
 
 
-def pre_processing(X, Y, features, labels, dev_size, test_size, X_scaler_type, Y_scaler_type, plotClass,
-                   eta_min=0.5, OR_min=0.05, beta_deviation_max=0.2):
+def pre_processing(X, Y, features, labels, dev_size, test_size, X_scaler_type, Y_scaler_type, encoding, plotClass,
+                   data_dir, eta_min=0.5, OR_min=0.05, beta_deviation_max=0.2):
     """
     Delete meaningless individuals, normalize the dataset, and split into train, dev and test sets
     :param X: raw vector of input features (m, n_features)
@@ -52,7 +54,9 @@ def pre_processing(X, Y, features, labels, dev_size, test_size, X_scaler_type, Y
     :param test_size: percentage of the dataset used for the test set
     :param X_scaler_type: type of scaler used to normalize the input features --> 'min max', 'standard', or 'none'
     :param Y_scaler_type: type of scaler used to normalize the labels --> 'min max', 'standard', or 'none'
+    :param encoding: True or False --> use label encoding or not
     :param plotClass:
+    :param data_dir: directory where data are stored
     :param eta_min: minimum threshold of eta_tt used for data filtering
     :param beta_deviation_max: maximum acceptable deviation between beta_tt_target and beta_tt used for data filtering
     :return:
@@ -110,10 +114,12 @@ def pre_processing(X, Y, features, labels, dev_size, test_size, X_scaler_type, Y
         Y_scaler = None
 
     # labels encoding
-    if Y_scaler is None:
-        Y_encoded = Y_filtered
+    if encoding:
+        Y_encoded, beta2_bl_min, Fax_min = labels_encoding(labels, Y_filtered)
+        pickle.dump(beta2_bl_min, open(os.path.join(data_dir, 'beta2_bl_min'), 'wb'))
+        pickle.dump(Fax_min, open(os.path.join(data_dir, 'Fax_min'), 'wb'))
     else:
-        Y_encoded = labels_encoding(labels, Y_filtered)
+        Y_encoded = Y_filtered
 
     # split the dataset into train, dev and test sets
     n_dev = int(X_filtered.shape[0] * dev_size / 100)
@@ -160,42 +166,133 @@ def pre_processing(X, Y, features, labels, dev_size, test_size, X_scaler_type, Y
 
     if labels[0] == 'beta_tt':
         plotClass.plot_objectives_distribution(Y_train_norm)
+        eta_reg = max_eta_trend(plotClass, X_filtered[:, 8], X_filtered[:, 9], Y_filtered[:, 1])
     elif labels[0] == 'Omega [rpm]':
         plotClass.plot_constraints_distribution(Y_train_norm)
+        eta_reg = None
 
-    return X_train_norm, X_dev_norm, X_test_norm, Y_train_norm, Y_dev_norm, Y_test_norm, X_scaler, Y_scaler
+        # plot individual x-y relationships to analyze the dataset
+    while True:
+        X_idx, Y_idx = [int(x) for x in input("\nSpecify indexes of input feature and label you want to plot. "
+                                              "Enter -1 -1 to quit plotting: ").split()]
+        if (X_idx == -1) and (Y_idx == -1):
+            break
+        else:
+            plt.figure()
+            plt.scatter(X_filtered[:, X_idx], Y_filtered[:, Y_idx], s=1)
+            plt.xlabel(features[X_idx])
+            plt.ylabel(labels[Y_idx])
+            plt.show()
+
+    return X_train_norm, X_dev_norm, X_test_norm, Y_train_norm, Y_dev_norm, Y_test_norm, X_scaler, Y_scaler, eta_reg
 
 
-def labels_encoding(labels, Y):
+def labels_encoding(Y_labels, Y):
     """
-    Transform the labels to simplify the regression task
-    :param labels: array of strings identifying the labels associated to each column of Y
+    Transform the labels to achieve a distribution of data that resembles more closely a Gaussian distribution,
+    aiming to improve the performance of the ANN.
+    :param Y_labels: array of strings identifying the labels associated to each column of Y
     :param Y: original labels
-    :return: encoded labels
+    :return: Y_encoded, beta2_bl_min, Fax_min
     """
     Y_encoded = Y
+    beta2_bl_min = 0
+    Fax_min = 0
 
-    for ii, label in enumerate(labels):
-        if (label == 'beta_tt') or (label == 'Omega [rpm]') or \
-                (label == 'OR') or (label == 'R4 [m]') or (label == 'H2 [m]'):
+    for ii, label in enumerate(Y_labels):
+        if (label == 'beta_tt') or (label == 'Omega [rpm]'):
             Y_encoded[:, ii] = np.log(Y[:, ii])
 
-    return Y_encoded
+        elif label == 'OR':
+            Y_encoded[:, ii] = np.log(Y[:, ii] * 100)
+
+        elif label == 'R1_hub [m]':
+            Y_encoded[:, ii] = Y[:, ii] * 1000
+
+        elif label == 'R4 [m]':
+            Y_encoded[:, ii] = np.log(Y[:, ii] * 1000)
+
+        elif label == 'H2 [m]':
+            Y_encoded[:, ii] = np.log1p(Y[:, ii] * 1000)
+
+        elif label == 'beta2_bl [deg]':
+            beta2_bl_min = np.min(Y[:, ii])
+            Y_encoded[:, ii] = Y[:, ii] - (beta2_bl_min - 1)
+
+        elif label == 'F_ax [N]':
+            Fax_min = np.min(Y[:, ii])
+            Y_encoded[:, ii] = np.log(Y[:, ii] - (Fax_min * 1.01))
+
+    return Y_encoded, beta2_bl_min, Fax_min
 
 
-def labels_decoding(labels, Y_encoded):
+def labels_decoding(Y_labels, Y_encoded, beta2_bl_min, Fax_min):
     """
-    Inverse transformation of labels, used when testing and deploying the ANN to predict an unknown output
-    :param labels: array of strings identifying the labels associated to each column of Y
+    Inverse transformation of labels, used when testing and deploying the ANN to predict an unknown output.
+    :param Y_labels: array of strings identifying the labels associated to each column of Y
     :param Y_encoded: encoded labels
-    :return: original labels
+    :return:original labels
     """
     Y = Y_encoded
 
-    for ii, label in enumerate(labels):
-        if (label == 'beta_tt') or (label == 'Omega [rpm]') or \
-                (label == 'OR') or (label == 'R4 [m]') or (label == 'H2 [m]'):
+    for ii, label in enumerate(Y_labels):
+        if (label == 'beta_tt') or (label == 'Omega [rpm]'):
             Y[:, ii] = np.exp(Y_encoded[:, ii])
 
+        elif label == 'OR':
+            Y[:, ii] = np.exp(Y_encoded[:, ii]) / 100
+
+        elif label == 'R1_hub [m]':
+            Y[:, ii] = Y_encoded[:, ii] / 1000
+
+        elif label == 'R4 [m]':
+            Y[:, ii] = np.exp(Y_encoded[:, ii]) / 1000
+
+        elif label == 'H2 [m]':
+            Y[:, ii] = np.expm1(Y_encoded[:, ii]) / 1000
+
+        elif label == 'beta2_bl [deg]':
+            Y[:, ii] = Y_encoded[:, ii] + (beta2_bl_min - 1)
+
+        elif label == 'F_ax [N]':
+            Y[:, ii] = np.exp(Y_encoded[:, ii]) + (Fax_min * 1.01)
+
     return Y
+
+
+def max_eta_trend(plotClass, beta_tt, mass_flow, eta_tt, samples=30):
+    """
+    :param beta_tt: target total-to-total compression ratio dataset
+    :param mass_flow: mass flow rate dataset
+    :param eta_tt: total-to-total efficiency dataset
+    :return:
+    """
+    beta_tt_vec = np.linspace(min(beta_tt), max(beta_tt), samples)
+    mass_flow_vec = np.linspace(min(mass_flow), max(mass_flow), samples)
+    eta_max = np.zeros((samples, samples))
+    eta_max_fit = np.zeros((samples, samples))
+    d_beta = 0.45 * (beta_tt_vec[1] - beta_tt_vec[0])
+    d_mass = 0.45 * (mass_flow_vec[1] - mass_flow_vec[0])
+    X = np.zeros((int(samples ** 2), 2))
+    count = 0
+
+    for ii, mass in enumerate(mass_flow_vec):
+        mask_mass = np.logical_and(mass_flow > mass - d_mass, mass_flow < mass + d_mass)
+        for jj, beta in enumerate(beta_tt_vec):
+            mask_beta = np.logical_and(beta_tt > beta - d_beta, beta_tt < beta + d_beta)
+            mask = np.logical_and(mask_mass, mask_beta)
+            eta_max[ii, jj] = np.max(eta_tt[mask])
+            X[count, :] = [mass, beta]
+            count += 1
+
+    eta_reg = LinearRegression().fit(X, eta_max.flatten())
+
+    for ii, mass in enumerate(mass_flow_vec):
+        for jj, beta in enumerate(beta_tt_vec):
+            eta_max_fit[ii, jj] = eta_reg.predict(np.array([mass, beta]).reshape(1, -1))
+
+    plotClass.plot_eta_max(beta_tt_vec, mass_flow_vec, eta_max, eta_max_fit)
+
+    return eta_reg
+
 

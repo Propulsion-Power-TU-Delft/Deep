@@ -9,20 +9,18 @@
 ########################################################################################################################
 
 import plot
-import pickle
 from utils.gp import *
 import tensorflow as tf
 from utils.mlp import *
 from pre_processing import *
-import matplotlib.pyplot as plt
 from torch.utils.data import TensorDataset, DataLoader
 
 
 # user-defined input
 dev_size = 6                              # percentage of total dataset used for the dev set
 test_size = 6                             # percentage of total dataset used for the test set
-model_type = 'GP'                         # 'MLP' or 'GP'
-output_dir = "test"      # name of the output directory, where results will be saved
+model_type = 'MLP'                        # 'MLP' or 'GP'
+output_dir = "test1"      # name of the output directory, where results will be saved
 
 # paths of dataset to be loaded
 dataset = ["R1233zd(E)_Pr0.015_Tr0.65", "Propane_Pr0.015_Tr0.65", "Isobutane_Pr0.015_Tr0.65",
@@ -78,22 +76,9 @@ X, Y = get_data(dataset)
 pickle.dump(X, open(os.path.join(data_dir, 'X'), 'wb'))
 pickle.dump(Y, open(os.path.join(data_dir, 'Y'), 'wb'))
 
-# plot individual x-y relationships to analyze the dataset
-while True:
-    X_idx, Y_idx = [int(x) for x in input("\nSpecify indexes of input feature and label you want to plot. "
-                                          "Enter -1 -1 to quit plotting: ").split()]
-    if (X_idx == -1) and (Y_idx == -1):
-        break
-    else:
-        plt.figure()
-        plt.scatter(X[:, X_idx], Y[:, Y_idx], s=1)
-        plt.xlabel(features[X_idx])
-        plt.ylabel(labels[Y_idx])
-        plt.show()
-
 # pre-processing
-X_train_norm, X_dev_norm, X_test_norm, Y_train_norm, Y_dev_norm, Y_test_norm, X_scaler, Y_scaler = \
-    pre_processing(X, Y, features, labels, dev_size, test_size, 'min-max', 'none', plotClass)
+X_train_norm, X_dev_norm, X_test_norm, Y_train_norm, Y_dev_norm, Y_test_norm, X_scaler, Y_scaler, eta_reg = \
+    pre_processing(X, Y, features, labels, dev_size, test_size, 'standard', 'none', True, plotClass, data_dir)
 
 # save the train, dev, and test sets
 pickle.dump(features, open(os.path.join(data_dir, 'features'), 'wb'))
@@ -107,6 +92,10 @@ pickle.dump(Y_train_norm, open(os.path.join(data_dir, 'Y_train_norm'), 'wb'))
 pickle.dump(Y_dev_norm, open(os.path.join(data_dir, 'Y_dev_norm'), 'wb'))
 pickle.dump(Y_test_norm, open(os.path.join(data_dir, 'Y_test_norm'), 'wb'))
 
+# save the dynamic eta filter, if any
+if eta_reg is not None:
+    pickle.dump(eta_reg, open(os.path.join(data_dir, 'eta_filter'), 'wb'))
+
 # ------------------------------------------------------------------------------------------------------------------- #
 
 # Multi-Layer Perceptron
@@ -117,7 +106,7 @@ if model_type == 'MLP':
     # hyper-parameters
     L = 5
     nl = [199, 199, 200, 144, 42]
-    n_epochs = 10
+    n_epochs = 500
     alpha = 2.75
     lr_decay = 1.0
     decay_steps = 10000
@@ -159,35 +148,38 @@ if model_type == 'GP':
     print("\n# ------------------------------------------- GP Training ------------------------------------------- #")
 
     # hyper-parameters
-    epochs = 10
-    alpha = 2
+    epochs = 20
+    alpha = 1.5
     batch_size = 10
-    n_inducing = 500
+    n_inducing = 1000
     kernel = 'matern'
+    nu_matern = 1.5
+    eps = 4
+
+    # tensors definition
+    train_x = torch.Tensor(X_train_norm)
+    test_x = torch.Tensor(X_test_norm)
 
     for ii, label in enumerate(labels):
-
         print('\nTraining Gaussian Process to predict: ' + label + ' ...')
 
         # tensors definition
-        train_x = torch.Tensor(X_train_norm)
         train_y = torch.Tensor(Y_train_norm[:, ii])
-        test_x = torch.Tensor(X_test_norm)
         test_y = torch.Tensor(Y_test_norm[:, ii])
 
         # define dataset and mini-batches
         train_dataset = TensorDataset(train_x, train_y)
-        train_loader = DataLoader(train_dataset, batch_size=int(2 ** batch_size), shuffle=True)
+        train_loader = DataLoader(train_dataset, batch_size=int(2 ** batch_size), shuffle=False)
         test_dataset = TensorDataset(test_x, test_y)
         test_loader = DataLoader(test_dataset, batch_size=int(2 ** batch_size), shuffle=False)
 
         # define model
         inducing_points = train_x[:n_inducing, :].contiguous()
-        model = StochasticVariationalGP(inducing_points, X_train_norm.shape[1], kernel)
+        model = StochasticVariationalGP(inducing_points, len(features), kernel, nu_matern=nu_matern)
         likelihood = gpytorch.likelihoods.GaussianLikelihood()
 
         # train the model
-        train_variational_gp(model, likelihood, train_loader, X_train_norm.shape[0], epochs, alpha)
+        train_variational_gp(model, likelihood, train_loader, train_y.size(0), epochs, alpha, eps=eps)
 
         # save trained model
         torch.save(model.state_dict(), os.path.join(model_dir, 'model_state_' + label.split(' ')[0] + '.pth'))

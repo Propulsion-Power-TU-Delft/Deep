@@ -8,22 +8,20 @@
 # 2022 - TU Delft - All rights reserved
 ########################################################################################################################
 
-import time
-import pickle
 import seaborn as sns
-import torch
-
 from utils.gp import *
 import tensorflow as tf
 from matplotlib import cm
 from pre_processing import *
 
-# TODO: IMPLEMENT EVALUATION FOR GPs
 
 # user-defined input
-model_type = 'GP'                         # 'MLP' or 'GP'
+model_type = 'MLP'                         # 'MLP' or 'GP'
 labels_type = 'obj'     # 'obj' or 'con'
-output_dir = "test"      # name of the output directory, where results will be saved
+output_dir = "test1"      # name of the output directory, where results will be saved
+encoding = True
+n_inducing = 1000        # number of inducing points used to train the GPs
+kernel = 'matern'          # kernel used to define the GPs during training
 
 # ------------------------------------------------------------------------------------------------------------------- #
 
@@ -56,10 +54,6 @@ if model_type == 'MLP':
 
 elif model_type == 'GP':
 
-    # user-defined input
-    n_inducing = 500        # number of inducing points used to train the GPs
-    kernel = 'matern'          # kernel used to define the GPs during training
-
     # initialize objects used to define models
     inducing_points = torch.Tensor(X_train_norm[:n_inducing, :])
     likelihood = gpytorch.likelihoods.GaussianLikelihood()
@@ -86,11 +80,19 @@ if model_type == 'MLP':
 
     if Y_scaler is not None:
         Y_hat_encoded = Y_scaler.inverse_transform(res)
-        Y_hat = labels_decoding(labels, Y_hat_encoded)
-        Y_test = Y_scaler.inverse_transform(Y_test_norm)
+        Y_test_encoded = Y_scaler.inverse_transform(Y_test_norm)
     else:
-        Y_hat = res
-        Y_test = Y_test_norm
+        Y_hat_encoded = res
+        Y_test_encoded = Y_test_norm
+
+    if encoding:
+        beta2_bl_min = pickle.load(open(os.path.join(data_dir, 'beta2_bl_min'), 'rb'))
+        Fax_min = pickle.load(open(os.path.join(data_dir, 'Fax_min'), 'rb'))
+        Y_hat = labels_decoding(labels, Y_hat_encoded, beta2_bl_min, Fax_min)
+        Y_test = labels_decoding(labels, Y_test_encoded, beta2_bl_min, Fax_min)
+    else:
+        Y_hat = Y_hat_encoded
+        Y_test = Y_test_encoded
 
     error = Y_hat - Y_test
     abs_error = np.abs(error)
@@ -133,7 +135,7 @@ if model_type == 'MLP':
 elif model_type == 'GP':
 
     # initialize arrays where results are stored
-    Y_hat_mean = np.zeros((X_test_norm.shape[0], len(models)))
+    Y_hat_mean_norm = np.zeros((X_test_norm.shape[0], len(models)))
     Y_hat_var = np.zeros((X_test_norm.shape[0], len(models)))
 
     # evaluate accuracy with respect to ground true labels of test set
@@ -144,17 +146,24 @@ elif model_type == 'GP':
         # Make predictions
         with torch.no_grad(), gpytorch.settings.fast_computations(log_prob=False, covar_root_decomposition=False):
             predictions = likelihood(model(torch.Tensor(X_test_norm)))
-            res_mean = predictions.mean
-            res_var = predictions.variance
-            Y_hat_var[:, ii] = res_var      # TODO: understand how to convert var in case of normalization
+            Y_hat_mean_norm[:, ii] = predictions.mean
+            Y_hat_var[:, ii] = predictions.variance      # TODO: understand how to convert var in case of normalization
 
-            if Y_scaler is not None:
-                Y_hat_mean_encoded = Y_scaler.inverse_transform(res_mean)
-                Y_hat_mean[:, ii] = labels_decoding(labels, Y_hat_mean_encoded)
-                Y_test = Y_scaler.inverse_transform(Y_test_norm)
-            else:
-                Y_hat_mean[:, ii] = res_mean
-                Y_test = Y_test_norm
+    if Y_scaler is not None:
+        Y_hat_mean_encoded = Y_scaler.inverse_transform(Y_hat_mean_norm)
+        Y_test_encoded = Y_scaler.inverse_transform(Y_test_norm)
+    else:
+        Y_hat_mean_encoded = Y_hat_mean_norm
+        Y_test_encoded = Y_test_norm
+
+    if encoding:
+        beta2_bl_min = pickle.load(open(os.path.join(data_dir, 'beta2_bl_min'), 'rb'))
+        Fax_min = pickle.load(open(os.path.join(data_dir, 'Fax_min'), 'rb'))
+        Y_hat_mean = labels_decoding(labels, Y_hat_mean_encoded, beta2_bl_min, Fax_min)
+        Y_test = labels_decoding(labels, Y_test_encoded, beta2_bl_min, Fax_min)
+    else:
+        Y_hat_mean = Y_hat_mean_encoded
+        Y_test = Y_test_encoded
 
     error = Y_hat_mean - Y_test
     abs_error = np.abs(error)

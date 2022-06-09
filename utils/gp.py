@@ -71,7 +71,9 @@ def train_variational_gp(model, likelihood, train_loader, n_train, epochs, alpha
     likelihood.train()
 
     # Use the adam optimizer
-    optimizer = torch.optim.Adam(model.parameters(), lr=10 ** (- alpha))  # Includes GaussianLikelihood parameters
+    optimizer = torch.optim.Adam([
+        {'params': model.parameters()},
+        {'params': likelihood.parameters()}], lr=10 ** (- alpha))  # Includes GaussianLikelihood parameters
 
     # Loss function for variational GPs
     mll = gpytorch.mlls.VariationalELBO(likelihood, model, num_data=n_train)

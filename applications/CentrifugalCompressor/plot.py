@@ -1,4 +1,5 @@
 import os
+import numpy as np
 import seaborn as sns
 import matplotlib as mpl
 import matplotlib.pyplot as plt
@@ -280,3 +281,28 @@ class Plot:
         fig2.savefig(self.tiff_dir + '/pct_error_distribution_obj.tiff')
         plt.close(fig2)
 
+    def plot_eta_max(self, beta_tt, mass_flow, eta_max, eta_max_fit, levels=40):
+
+        fig1, ax1 = plt.subplots(figsize=(9.6, 8.0))
+
+        CS1 = ax1.contourf(beta_tt, mass_flow, eta_max, levels, cmap=self.cmap, origin='upper')
+        ax1.set_xlabel(r'$\beta_\mathrm{tt}$ [-]')
+        ax1.set_ylabel(r'$\dot{m}$ [kg/s]')
+        cbar = fig1.colorbar(CS1, shrink=1.0)
+        cbar.ax.set_xlabel(r'$\eta_\mathrm{tt,max}$ [\%]')
+
+        fig1.savefig(self.jpeg_dir + '/eta_max.jpeg', dpi=400)
+        fig1.savefig(self.tiff_dir + '/eta_max.tiff')
+        plt.close(fig1)
+
+        fig2, ax2 = plt.subplots(figsize=(9.6, 8.0))
+
+        CS2 = ax2.contourf(beta_tt, mass_flow, eta_max_fit, levels, cmap=self.cmap, origin='upper')
+        ax2.set_xlabel(r'$\beta_\mathrm{tt}$ [-]')
+        ax2.set_ylabel(r'$\dot{m}$ [kg/s]')
+        cbar = fig2.colorbar(CS2, shrink=1.0)
+        cbar.ax.set_xlabel(r'$\eta_\mathrm{tt,max,fit}$ [\%]')
+
+        fig2.savefig(self.jpeg_dir + '/eta_max_fit.jpeg', dpi=400)
+        fig2.savefig(self.tiff_dir + '/eta_max_fit.tiff')
+        plt.close(fig2)
