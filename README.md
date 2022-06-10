@@ -1,5 +1,5 @@
-# DeepData
-Data-driven regression based on artificial intelligence
+# DEEP
+Data-driven Embedded Echosystem for Propulsion and Power applications
 
 ---
 
