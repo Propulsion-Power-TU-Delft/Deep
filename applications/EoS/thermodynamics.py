@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 ########################################################################################################################
-# DeepData: data-driven equation of state application
+# Deep: data-driven equation of state application
 # Authors: ir. A. Giuffre', ir. E. Bunschoten, Dr. ir. A. Cappiello, ir. M. Majer, Dr. ir. M. Pini
 # Content: Thermodynamic relationships between s and primary properties
 # 2022 - TU Delft - All rights reserved

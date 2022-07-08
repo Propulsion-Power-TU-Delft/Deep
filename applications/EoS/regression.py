@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 ########################################################################################################################
-# DeepData: data-driven equation of state application
+# Deep: data-driven equation of state application
 # Authors: ir. A. Giuffre', ir. E. Bunschoten, Dr. ir. A. Cappiello, ir. M. Majer, Dr. ir. M. Pini
 # Content: Load and pre-process the dataset, train and save the selected model
 # 2022 - TU Delft - All rights reserved
@@ -24,8 +24,8 @@ from torch.utils.data import TensorDataset, DataLoader
 # user-defined input
 dev_size = 5                # percentage of total dataset used for the dev set
 test_size = 5               # percentage of total dataset used for the test set
-model_type = 'GP'           # 'MLP' or 'GP'
-data_folder = 'MM_250k'     # name of the folder collecting the dataset
+model_type = 'MLP'           # 'MLP' or 'GP'
+data_folder = 'MLP_MM_250k_rho_below_10'     # name of the folder collecting the dataset
 data_type = '1phase'        # '1phase', '2phase', or 'full'
 
 # ------------------------------------------------------------------------------------------------------------------- #
@@ -36,7 +36,7 @@ X = pickle.load(open(os.path.join('data', data_folder, 'X_' + data_type + '.pkl'
 Y = pickle.load(open(os.path.join('data', data_folder, 'Y_' + data_type + '.pkl'), 'rb'))
 
 # split into train, dev, test sets
-X, Y = shuffle(X, Y, random_state=61)
+X, Y = shuffle(X, Y, random_state=29)
 n_dev = int(X.shape[0] * dev_size / 100)
 n_test = int(X.shape[0] * test_size / 100)
 n_train = X.shape[0] - n_dev - n_test
@@ -186,9 +186,9 @@ plt.close(fig3)
 if model_type == 'MLP':
 
     # hyper-parameters
-    L = 4
-    nl = [30, 50, 50, 30]
-    n_epochs = 10
+    L = 2
+    nl = [50, 50]
+    n_epochs = 500
     alpha = 4
     lr_decay = 0.95
     decay_steps = 10000
@@ -210,7 +210,7 @@ if model_type == 'MLP':
     os.environ["KMP_AFFINITY"] = "granularity=fine,verbose,compact,1,0"
 
     # train the model
-    model = MLP(X_train_norm, X_dev_norm, Y_train_norm, Y_dev_norm, L, nl, n_epochs,
+    model = MLP(X_train_norm, X_dev_norm, Y_train_norm, Y_dev_norm, L, nl, n_epochs, activation='swish',
                 alpha=alpha, lr_decay=lr_decay, decay_steps=decay_steps, staircase=staircase,
                 batch_size=batch_size, batch_norm=batch_norm)
     model.set_model_architecture()

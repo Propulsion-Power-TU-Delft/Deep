@@ -2,13 +2,14 @@
 # -*- coding: utf-8 -*-
 
 ########################################################################################################################
-# DeepData: data-driven regression based on artificial intelligence
+# Deep: data-driven regression based on artificial intelligence
 # Author: ir. A. Giuffre'
 # Content: Classes to create, train, and optimize a Multi-Layer Perceptron artificial neural network
 # 2022 - TU Delft - All rights reserved
 ########################################################################################################################
 
 import os
+import time
 from tensorflow import keras
 import matplotlib.pyplot as plt
 
@@ -69,9 +70,12 @@ class MLP:
         self.model = keras.models.Sequential()
         self.history = None
 
-        # sanity check
+        # input sanity check
+        if len(self.nl) != self.L:
+            raise ValueError("The length of the list 'nl' must be equal to the prescribed number of layers 'L'")
+
         if (self.regularization == 3) and (len(self.dropout_prob) != self.L):
-            raise ValueError("When using dropout, the length of the dropout_prob list must be equal to L")
+            raise ValueError("When using dropout, the length of the 'dropout_prob' list must be equal to 'L'")
 
     def set_model_architecture(self):
         """ Define the model architecture based on the prescribed set of hyper-parameters """
@@ -315,28 +319,29 @@ class MLP:
         ax.set_ylabel('Loss')
         ax.grid(1)
         plt.legend(loc='upper right')
-        fig.savefig(os.path.join(plot_dir, 'jpeg', 'training_history.jpeg'), dpi=400)
-        fig.savefig(os.path.join(plot_dir, 'tiff', 'training_history.tiff'))
+        fig.savefig(os.path.join(plot_dir, 'training_history.jpeg'), dpi=400)
         plt.close(fig)
 
 
 class HyperSearch:
     """
     Class implementing the optimization of a Multi-Layer Perceptron Neural Network.
-    Dropout is applied by default, but the probabilities in each layer are selected by the optimizer.
+    By default, dropout is not applied.
 
-    Optimization variables (L + 3):
+    Optimization variables (L + 4):
         - Number of neurons in each layer: nl (array of L int)
         - Size of mini-batches used in the optimization procedure: batch_size (int)
         - Strategy used for batch normalization: batch_norm (int)
         - Initial learning rate: alpha (float)
+        - Activation function: activation (int)
 
-    Objectives (1):
+    Objectives (2):
         - Loss evaluated on the dev set
+        - Evaluation time
     """
 
-    def __init__(self, X_train, X_dev, Y_train, Y_dev, L, n_epochs,
-                 lr_decay=1.0, decay_steps=100000, staircase=False):
+    def __init__(self, X_train, X_dev, Y_train, Y_dev, L, n_epochs, n_obj, regularization=0, w_init='he_uniform',
+                 lr_decay=1.0, decay_steps=100000, staircase=False, max_norm=4, dropout_prob=[]):
         """
         :param X_train: array of input features used for the training set
         :param X_dev: array of input features used for the dev set
@@ -344,9 +349,19 @@ class HyperSearch:
         :param Y_dev: array of labels used for the dev set
         :param L: number of layers
         :param n_epochs: number of epochs used to train the neural network
+        :param n_obj: number of objective functions used for the hyper-parameters search.
+            The method used to combine multiple objectives is arbitrary and must be tuned for each use case.
+        :param regularization:
+            if 0, don't apply regularization;
+            if 1, apply L1 regularization to each layer;
+            if 2, apply L2 regularization to each layer;
+            if 3, apply dropout to each layer
+        :param w_init: method used to initialize the weights of the ann
         :param lr_decay: learning rate decay used to define the exponential decay schedule; if 1, there is no decay
         :param decay_steps: the learning rate drops significantly every decay_steps
         :param staircase: if True, the learning rate drops following a staircase instead of a continuous function
+        :param max_norm: value of max-norm weight constraint used in each layer, when resorting to inverted dropout
+        :param dropout_prob: list of dropout probabilities used in each layer, except for the output layer
         """
         self.count = 0
         self.X_train = X_train
@@ -355,9 +370,14 @@ class HyperSearch:
         self.Y_dev = Y_dev
         self.L = L
         self.n_epochs = n_epochs
+        self.n_obj = n_obj
+        self.reg = regularization
+        self.w_init = w_init
         self.lr_decay = lr_decay
         self.decay_steps = decay_steps
         self.staircase = staircase
+        self.max_norm = max_norm
+        self.dropout_prob = dropout_prob
 
     def evaluate(self, x):
         """
@@ -367,23 +387,54 @@ class HyperSearch:
         """
         self.count += 1
         nl = [int(x.get_coord(i)) for i in range(self.L)]
-        batch_size = int(2 ** x.get_coord(self.L))
+        batch_size = int(x.get_coord(self.L))
         batch_norm = int(x.get_coord(self.L + 1))
-        alpha = 10 ** float(x.get_coord(self.L + 2))
+        alpha = float(x.get_coord(self.L + 2))
+        flag = int(x.get_coord(self.L + 3))
 
-        print('\n******************** ITERATION NO. %d ********************' % self.count)
-        print("Number of neurons per layer : ", str(nl))
-        print("Batch size                  : ", str(batch_size))
-        print("Batch normalization strategy: ", str(batch_norm))
-        print("Learning rate               : ", str(alpha))
+        if flag == 0:
+            activation = 'sigmoid'
+        elif flag == 1:
+            activation = 'tanh'
+        elif flag == 2:
+            activation = 'relu'
+        elif flag == 3:
+            activation = 'selu'
+        elif flag == 4:
+            activation = 'gelu'
+        elif flag == 5:
+            activation = 'prelu'
+        elif flag == 6:
+            activation = 'swish'
 
         model = MLP(self.X_train, self.X_dev, self.Y_train, self.Y_dev, self.L, nl, self.n_epochs,
-                    alpha=alpha, lr_decay=self.lr_decay, decay_steps=self.decay_steps, staircase=self.staircase,
-                    batch_size=batch_size, batch_norm=batch_norm)
-        model.set_model_architecture()
+                    activation=activation, w_init=self.w_init, alpha=alpha, lr_decay=self.lr_decay,
+                    decay_steps=self.decay_steps, staircase=self.staircase, batch_size=batch_size,
+                    batch_norm=batch_norm, regularization=self.reg, max_norm=self.max_norm,
+                    dropout_prob=self.dropout_prob)
 
+        print('\n******************** ITERATION NO. %d ********************' % self.count)
+        print("Number of neurons per layer : ", str(model.nl))
+        print("Batch size                  : %d" % model.batch_size)
+        print("Batch normalization strategy: %d" % model.batch_norm)
+        print("Learning rate               : %10.7f" % model.alpha)
+        print("Activation function         : ", activation)
+
+        model.set_model_architecture()
         model.train_model(verbose=2)
-        x.setBBO(str(model.history.history['val_loss'][-1]).encode("UTF-8"))
+
+        if self.n_obj == 1:
+            f = model.history.history['val_loss'][-1]
+        else:
+            start = time.time()
+            model.model.predict(self.X_train)
+            end = time.time()
+            comp_cost = (end - start) / self.X_train.shape[0]
+            f = comp_cost / 100 + model.history.history['val_loss'][-1]
+            print("Evaluation time            : %10.8f s" % comp_cost)
+
+        x.setBBO(str(f).encode("UTF-8"))
+
         print("Train set loss             : %10.8f" % model.history.history['loss'][-1])
         print("Dev set loss               : %10.8f" % model.history.history['val_loss'][-1])
 

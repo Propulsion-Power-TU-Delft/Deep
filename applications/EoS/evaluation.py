@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 ########################################################################################################################
-# DeepData: data-driven equation of state application
+# Deep: data-driven equation of state application
 # Authors: ir. A. Giuffre', ir. E. Bunschoten, Dr. ir. A. Cappiello, ir. M. Majer, Dr. ir. M. Pini
 # Content: Load pre-trained model and evaluate its accuracy on the test set
 # 2022 - TU Delft - All rights reserved
@@ -20,8 +20,8 @@ from thermodynamics import *
 # TODO: IMPLEMENT EVALUATION FOR GPs
 
 # user-defined input
-model_type = 'GP'           # 'MLP' or 'GP'
-data_folder = 'MM_250k'     # name of the folder collecting the dataset
+model_type = 'MLP'           # 'MLP' or 'GP'
+data_folder = 'MLP_MM_250k_rho_above_10'     # name of the folder collecting the dataset
 data_type = '1phase'        # '1phase', '2phase', or 'full'
 
 # ------------------------------------------------------------------------------------------------------------------- #

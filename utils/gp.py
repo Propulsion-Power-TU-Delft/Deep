@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 ########################################################################################################################
-# DeepData: data-driven regression based on artificial intelligence
+# Deep: data-driven regression based on artificial intelligence
 # Author: ir. A. Giuffre'
 # Content: Classes to create, train, and optimize a Gaussian Process
 # 2022 - TU Delft - All rights reserved
