@@ -8,17 +8,9 @@
 # 2022 - TU Delft - All rights reserved
 ########################################################################################################################
 
-import pickle
-import PyNomad
-import numpy as np
-import seaborn as sns
-import tensorflow as tf
 from utils.mlp import *
-from matplotlib import cm
-import matplotlib.pyplot as plt
 from sklearn.utils import shuffle
 from sklearn.preprocessing import MinMaxScaler
-from torch.utils.data import TensorDataset, DataLoader
 
 
 # user-defined input
@@ -29,7 +21,7 @@ data_folder = 'MLP_MM_250k_rho_above_10'     # name of the folder collecting the
 data_type = '1phase'                         # '1phase', '2phase', or 'full'
 L = 2                                        # number of hidden layers
 n_epochs = 250                               # number of epochs used for training
-n_obj = 2                                    # number of objectives considered for the hyper-parameters search
+batch_norm = 0                               # batch normalization strategy
 regularization = 0                           # regularization strategy
 w_init = 'he_uniform'                        # weight initialization strategy
 lr_decay = 1.0                               # learning rate decay
@@ -37,10 +29,7 @@ decay_steps = 100000                         # the learning rate drops significa
 staircase = False                            # if True, the learning rate drops following a staircase
 max_norm = 4                                 # value of max-norm weight constraint used in each layer (inverted dropout)
 dropout_prob = []                            # list of dropout probabilities used in each layer, except for the output
-x0 = [10,  10,  6,  0, 4, 6]                 # guess values of hyper-parameters used to start the optimization
-lb = [2,   2,   2,  0, 1, 0]                 # lower bounds of hyper-parameters
-ub = [100, 100, 10, 2, 5, 6]                 # upper bounds of hyper-parameters
-max_eval = 100                               # maximum number of evaluations set for the optimization
+samples = 100                                # number of samples used for the design of experiments
 
 # ------------------------------------------------------------------------------------------------------------------- #
 
@@ -99,33 +88,15 @@ pickle.dump(Y_scaler, open(os.path.join('data', data_folder, 'Y_scaler_' + data_
 
 # Optimization
 
-input_type = "BB_INPUT_TYPE ( "
-
-for layer in range(L):
-    input_type += " I"
-
-input_type += " I I R I )"
-
 model_dir = os.path.join('models', 'MLP', data_folder + '_' + data_type)
 if not os.path.isdir(model_dir):
     os.makedirs(model_dir)
 
-params = [input_type, "BB_OUTPUT_TYPE OBJ", "MAX_BB_EVAL " + str(max_eval),
-          "SGTELIB_MODEL_SEARCH yes", "SGTELIB_MODEL_DEFINITION TYPE KRIGING", "SGTELIB_MODEL_SEARCH_TRIALS 5",
-          "QUAD_MODEL_SEARCH yes", "SPECULATIVE_SEARCH yes", "CS_OPTIMIZATION true",
-          "NB_THREADS_OPENMP 1", "DISPLAY_DEGREE 2", "DISPLAY_ALL_EVAL false", "DISPLAY_STATS BBE OBJ",
-          "HISTORY_FILE " + model_dir + "/black_box_evaluations.txt",
-          "SOLUTION_FILE " + model_dir + "/solution.txt",
-          "STATS_FILE " + model_dir + "/convergence_history.txt",
-          "CACHE_FILE " + model_dir + "/cache.txt"]
+# doe = pickle.load(open(os.path.join(model_dir, 'doe.pkl'), 'rb'))
 
-problem = HyperSearch(X_train_norm, X_dev_norm, Y_train_norm, Y_dev_norm, L, n_epochs, n_obj,
-                      regularization=regularization, w_init=w_init, lr_decay=lr_decay, decay_steps=decay_steps,
-                      staircase=staircase, max_norm=max_norm, dropout_prob=dropout_prob)
-res = PyNomad.optimize(problem.evaluate, x0, lb, ub, params)
-
-fmt = ["{} = {}".format(n, v) for (n, v) in res.items()]
-output = "\n".join(fmt)
-print("\nNOMAD results \n" + output + " \n")
+opt = HyperSearch(X_train_norm, X_dev_norm, Y_train_norm, Y_dev_norm, L, n_epochs, batch_norm=batch_norm,
+                  regularization=regularization, w_init=w_init, lr_decay=lr_decay, decay_steps=decay_steps,
+                  staircase=staircase, max_norm=max_norm, dropout_prob=dropout_prob)
+opt.doe(samples, model_dir)
 
 # ------------------------------------------------------------------------------------------------------------------- #

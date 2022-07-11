@@ -10,8 +10,12 @@
 
 import os
 import time
+import pickle
+import numpy as np
 from tensorflow import keras
 import matplotlib.pyplot as plt
+from smt.sampling_methods import LHS
+from smt.applications.mixed_integer import (FLOAT, INT, ENUM, MixedIntegerSamplingMethod)
 
 
 class MLP:
@@ -328,20 +332,19 @@ class HyperSearch:
     Class implementing the optimization of a Multi-Layer Perceptron Neural Network.
     By default, dropout is not applied.
 
-    Optimization variables (L + 4):
+    Optimization variables (L + 3):
         - Number of neurons in each layer: nl (array of L int)
         - Size of mini-batches used in the optimization procedure: batch_size (int)
-        - Strategy used for batch normalization: batch_norm (int)
         - Initial learning rate: alpha (float)
-        - Activation function: activation (int)
+        - Activation function: activation (string)
 
     Objectives (2):
         - Loss evaluated on the dev set
         - Evaluation time
     """
 
-    def __init__(self, X_train, X_dev, Y_train, Y_dev, L, n_epochs, n_obj, regularization=0, w_init='he_uniform',
-                 lr_decay=1.0, decay_steps=100000, staircase=False, max_norm=4, dropout_prob=[]):
+    def __init__(self, X_train, X_dev, Y_train, Y_dev, L, n_epochs, batch_norm=0, regularization=0,
+                 w_init='he_uniform', lr_decay=1.0, decay_steps=100000, staircase=False, max_norm=4, dropout_prob=[]):
         """
         :param X_train: array of input features used for the training set
         :param X_dev: array of input features used for the dev set
@@ -349,8 +352,10 @@ class HyperSearch:
         :param Y_dev: array of labels used for the dev set
         :param L: number of layers
         :param n_epochs: number of epochs used to train the neural network
-        :param n_obj: number of objective functions used for the hyper-parameters search.
-            The method used to combine multiple objectives is arbitrary and must be tuned for each use case.
+        :param batch_norm:
+            if 0, don't batch normalization;
+            if 1, apply batch normalization to each hidden layer (before the activation function);
+            if 2, apply batch normalization to each hidden layer (after the activation function)
         :param regularization:
             if 0, don't apply regularization;
             if 1, apply L1 regularization to each layer;
@@ -370,7 +375,7 @@ class HyperSearch:
         self.Y_dev = Y_dev
         self.L = L
         self.n_epochs = n_epochs
-        self.n_obj = n_obj
+        self.batch_norm = batch_norm
         self.reg = regularization
         self.w_init = w_init
         self.lr_decay = lr_decay
@@ -381,62 +386,101 @@ class HyperSearch:
 
     def evaluate(self, x):
         """
-        Evaluate the objective function for one design point.
+        Create a MLP with the prescribed set of hyper-parameters, train it, and compute
+        its accuracy and its evaluation time
         :param x: array of design variables
-        :return 1 in case of successful evaluation, 0 otherwise
         """
         self.count += 1
-        nl = [int(x.get_coord(i)) for i in range(self.L)]
-        batch_size = int(x.get_coord(self.L))
-        batch_norm = int(x.get_coord(self.L + 1))
-        alpha = float(x.get_coord(self.L + 2))
-        flag = int(x.get_coord(self.L + 3))
 
-        if flag == 0:
+        # retrieve hyper-parameters for the current sample
+        nl = [int(x[i]) for i in range(self.L)]
+        batch_size = int(x[self.L])
+        alpha = x[self.L + 1]
+
+        if x[self.L + 2] == 0:
             activation = 'sigmoid'
-        elif flag == 1:
+        elif x[self.L + 2] == 1:
             activation = 'tanh'
-        elif flag == 2:
+        elif x[self.L + 2] == 2:
             activation = 'relu'
-        elif flag == 3:
+        elif x[self.L + 2] == 3:
             activation = 'selu'
-        elif flag == 4:
+        elif x[self.L + 2] == 4:
             activation = 'gelu'
-        elif flag == 5:
+        elif x[self.L + 2] == 5:
             activation = 'prelu'
-        elif flag == 6:
+        elif x[self.L + 2] == 6:
             activation = 'swish'
 
+        # define the MLP
         model = MLP(self.X_train, self.X_dev, self.Y_train, self.Y_dev, self.L, nl, self.n_epochs,
                     activation=activation, w_init=self.w_init, alpha=alpha, lr_decay=self.lr_decay,
                     decay_steps=self.decay_steps, staircase=self.staircase, batch_size=batch_size,
-                    batch_norm=batch_norm, regularization=self.reg, max_norm=self.max_norm,
+                    batch_norm=self.batch_norm, regularization=self.reg, max_norm=self.max_norm,
                     dropout_prob=self.dropout_prob)
 
-        print('\n******************** ITERATION NO. %d ********************' % self.count)
+        print('\n# ------------------------------- MLP NO. %d ------------------------------- #' % self.count)
         print("Number of neurons per layer : ", str(model.nl))
         print("Batch size                  : %d" % model.batch_size)
-        print("Batch normalization strategy: %d" % model.batch_norm)
         print("Learning rate               : %10.7f" % model.alpha)
         print("Activation function         : ", activation)
 
+        # train the MLP
         model.set_model_architecture()
         model.train_model(verbose=2)
 
-        if self.n_obj == 1:
-            f = model.history.history['val_loss'][-1]
-        else:
-            start = time.time()
-            model.model.predict(self.X_train)
-            end = time.time()
-            comp_cost = (end - start) / self.X_train.shape[0]
-            f = comp_cost / 100 + model.history.history['val_loss'][-1]
-            print("Evaluation time            : %10.8f s" % comp_cost)
-
-        x.setBBO(str(f).encode("UTF-8"))
+        # evaluate the accuracy and the computational cost at evaluation time
+        start = time.time()
+        model.model.predict(self.X_train)
+        end = time.time()
+        comp_cost = (end - start) / self.X_train.shape[0]
+        accuracy = model.history.history['val_loss'][-1]
 
         print("Train set loss             : %10.8f" % model.history.history['loss'][-1])
         print("Dev set loss               : %10.8f" % model.history.history['val_loss'][-1])
+        print("Evaluation time            : %10.8f s" % comp_cost)
 
-        return 1
+        return accuracy, comp_cost
+
+    def doe(self, samples, model_dir):
+
+        # define space of hyper-parameters to be investigated
+        if self.L == 1:
+            xtypes = [INT, INT, FLOAT, (ENUM, 7)]
+            bounds = [[2, 100], [4, 10], [1.0, 5.0],
+                      ["sigmoid", "tanh", "relu", "selu", "gelu", "prelu", "swish"]]
+
+        elif self.L == 2:
+            xtypes = [INT, INT, INT, FLOAT, (ENUM, 7)]
+            bounds = [[2, 100], [2, 100], [4, 10], [1.0, 5.0],
+                      ["sigmoid", "tanh", "relu", "selu", "gelu", "prelu", "swish"]]
+
+        elif self.L == 3:
+            xtypes = [INT, INT, INT, INT, FLOAT, (ENUM, 7)]
+            bounds = [[2, 100], [2, 100], [2, 100], [4, 10], [1.0, 5.0],
+                      ["sigmoid", "tanh", "relu", "selu", "gelu", "prelu", "swish"]]
+
+        elif self.L == 4:
+            xtypes = [INT, INT, INT, INT, INT, FLOAT, (ENUM, 7)]
+            bounds = [[2, 100], [2, 100], [2, 100], [2, 100], [4, 10], [1.0, 5.0],
+                      ["sigmoid", "tanh", "relu", "selu", "gelu", "prelu", "swish"]]
+
+        else:
+            raise ValueError("Hyper-parameters search with more than 4 hidden layers is not implemented yet")
+
+        # define sampling method and grid of samples
+        sampling = MixedIntegerSamplingMethod(xtypes, bounds, LHS, criterion="m")
+        doe = sampling(samples)
+
+        # initialize array used to store results
+        res = np.hstack((doe, np.zeros((samples, 2))))
+
+        # evaluate each MLP architecture within the sampling space and save results
+        for ii in range(samples):
+            accuracy, comp_cost = self.evaluate(doe[ii, :])
+            res[ii, -2] = accuracy
+            res[ii, -1] = comp_cost
+
+            # overwrite result file at each iteration
+            pickle.dump(res, open(os.path.join(model_dir, 'doe.pkl'), 'wb'))
 
