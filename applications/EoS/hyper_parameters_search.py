@@ -8,9 +8,12 @@
 # 2022 - TU Delft - All rights reserved
 ########################################################################################################################
 
+from plot import *
 from utils.mlp import *
 from sklearn.utils import shuffle
 from sklearn.preprocessing import MinMaxScaler
+from smt.surrogate_models import KRG
+from smt.applications.mixed_integer import MixedIntegerSurrogateModel, FLOAT, INT, ENUM
 
 
 # user-defined input
@@ -30,6 +33,7 @@ staircase = False                            # if True, the learning rate drops 
 max_norm = 4                                 # value of max-norm weight constraint used in each layer (inverted dropout)
 dropout_prob = []                            # list of dropout probabilities used in each layer, except for the output
 samples = 100                                # number of samples used for the design of experiments
+flag_doe = False                             # if True, run design of experiments; otherwise, load results
 
 # ------------------------------------------------------------------------------------------------------------------- #
 
@@ -92,11 +96,34 @@ model_dir = os.path.join('models', 'MLP', data_folder + '_' + data_type)
 if not os.path.isdir(model_dir):
     os.makedirs(model_dir)
 
-# doe = pickle.load(open(os.path.join(model_dir, 'doe.pkl'), 'rb'))
+if flag_doe:
+    opt = HyperSearch(X_train_norm, X_dev_norm, Y_train_norm, Y_dev_norm, L, n_epochs, batch_norm=batch_norm,
+                      regularization=regularization, w_init=w_init, lr_decay=lr_decay, decay_steps=decay_steps,
+                      staircase=staircase, max_norm=max_norm, dropout_prob=dropout_prob)
+    opt.doe(samples, model_dir)
 
-opt = HyperSearch(X_train_norm, X_dev_norm, Y_train_norm, Y_dev_norm, L, n_epochs, batch_norm=batch_norm,
-                  regularization=regularization, w_init=w_init, lr_decay=lr_decay, decay_steps=decay_steps,
-                  staircase=staircase, max_norm=max_norm, dropout_prob=dropout_prob)
-opt.doe(samples, model_dir)
+doe = pickle.load(open(os.path.join(model_dir, 'doe.pkl'), 'rb'))
+
+# remove from the dataset the MLP architectures featuring low accuracy
+mask = np.logical_and(doe[:, -2] != 0, doe[:, -2] < 1e-5)
+
+# define and train the surrogate model
+xtypes = [INT, INT, FLOAT, (ENUM, 7)]
+bounds = [[2, 100], [4, 10], [1.0, 5.0], [0, 1, 2, 3, 4, 5, 6]]
+
+sm_accuracy = MixedIntegerSurrogateModel(xtypes=xtypes, xlimits=bounds, surrogate=KRG(theta0=[1e-2]))
+sm_accuracy.set_training_values(doe[mask, :-2], doe[mask, -2])
+sm_accuracy.train()
+accuracy_hat = sm_accuracy.predict_values(doe[mask, :-2])
+
+sm_comp_cost = MixedIntegerSurrogateModel(xtypes=xtypes, xlimits=bounds, surrogate=KRG(theta0=[1e-2]))
+sm_comp_cost.set_training_values(doe[mask, :-2], doe[mask, -1])
+sm_comp_cost.train()
+comp_cost_hat = sm_comp_cost.predict_values(doe[mask, :-2])
+
+# plot the space of objectives: accuracy, computational cost, and predictions of the surrogate model
+plot = Plot(os.path.join('plots', 'MLP', data_folder + '_' + data_type))
+plot.plot_objectives(doe[mask, -2], doe[mask, -1], accuracy_hat, comp_cost_hat)
+
 
 # ------------------------------------------------------------------------------------------------------------------- #

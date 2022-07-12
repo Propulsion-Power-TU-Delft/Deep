@@ -1,5 +1,4 @@
 import os
-import numpy as np
 import seaborn as sns
 import matplotlib as mpl
 import matplotlib.pyplot as plt
@@ -16,40 +15,40 @@ class Plot:
         if not os.path.isdir(self.tiff_dir):
             os.makedirs(self.tiff_dir)
 
-        # if settings == 'large':
-        #     config = {  # setup matplotlib to use latex for output
-        #         "pgf.texsystem": "pdflatex",
-        #         "text.usetex": True,
-        #         "font.family": "DejaVu Sans",
-        #         "axes.titlesize": 36,
-        #         "axes.labelsize": 36,
-        #         "font.size": 36,
-        #         "legend.fontsize": 24,
-        #         "legend.frameon": True,
-        #         "xtick.labelsize": 24,
-        #         "ytick.labelsize": 24,
-        #         "xtick.major.pad": 12,
-        #         "ytick.major.pad": 12,
-        #         "figure.autolayout": True,
-        #         "figure.figsize": (9.6, 7.2)}
-        # else:
-        #     config = {  # setup matplotlib to use latex for output
-        #         "pgf.texsystem": "pdflatex",
-        #         "text.usetex": True,
-        #         "font.family": "DejaVu Sans",
-        #         "axes.titlesize": 24,
-        #         "axes.labelsize": 24,
-        #         "font.size": 24,
-        #         "legend.fontsize": 18,
-        #         "legend.frameon": True,
-        #         "xtick.labelsize": 18,
-        #         "ytick.labelsize": 18,
-        #         "xtick.major.pad": 8,
-        #         "ytick.major.pad": 8,
-        #         "figure.autolayout": True,
-        #         "figure.figsize": (9.6, 7.2)}
-        #
-        # mpl.rcParams.update(config)
+        if settings == 'large':
+            config = {  # setup matplotlib to use latex for output
+                "pgf.texsystem": "pdflatex",
+                "text.usetex": True,
+                "font.family": "DejaVu Sans",
+                "axes.titlesize": 36,
+                "axes.labelsize": 36,
+                "font.size": 36,
+                "legend.fontsize": 24,
+                "legend.frameon": True,
+                "xtick.labelsize": 24,
+                "ytick.labelsize": 24,
+                "xtick.major.pad": 12,
+                "ytick.major.pad": 12,
+                "figure.autolayout": True,
+                "figure.figsize": (9.6, 7.2)}
+        else:
+            config = {  # setup matplotlib to use latex for output
+                "pgf.texsystem": "pdflatex",
+                "text.usetex": True,
+                "font.family": "DejaVu Sans",
+                "axes.titlesize": 24,
+                "axes.labelsize": 24,
+                "font.size": 24,
+                "legend.fontsize": 18,
+                "legend.frameon": True,
+                "xtick.labelsize": 18,
+                "ytick.labelsize": 18,
+                "xtick.major.pad": 8,
+                "ytick.major.pad": 8,
+                "figure.autolayout": True,
+                "figure.figsize": (9.6, 7.2)}
+
+        mpl.rcParams.update(config)
 
     def plot_feature_distribution(self, X):
 
