@@ -22,11 +22,11 @@ from torch.utils.data import TensorDataset, DataLoader
 
 
 # user-defined input
-dev_size = 5                # percentage of total dataset used for the dev set
-test_size = 5               # percentage of total dataset used for the test set
-model_type = 'MLP'           # 'MLP' or 'GP'
-data_folder = 'MLP_MM_250k_rho_below_10'     # name of the folder collecting the dataset
-data_type = '1phase'        # '1phase', '2phase', or 'full'
+dev_size = 5                                 # percentage of total dataset used for the dev set
+test_size = 5                                # percentage of total dataset used for the test set
+model_type = 'MLP'                           # 'MLP' or 'GP'
+data_folder = 'MLP_MM_250k_rho_above_10'     # name of the folder collecting the dataset
+data_type = '1phase'                         # '1phase', '2phase', or 'full'
 
 # ------------------------------------------------------------------------------------------------------------------- #
 
@@ -187,12 +187,13 @@ if model_type == 'MLP':
 
     # hyper-parameters
     L = 2
-    nl = [50, 50]
+    nl = [19, 51]
     n_epochs = 500
-    alpha = 4
-    lr_decay = 0.95
+    activation = 'tanh'
+    alpha = 4.0185563
+    lr_decay = 1.0
     decay_steps = 10000
-    batch_size = 7
+    batch_size = 5
     batch_norm = 0
     reg = 0
     dropout_prob = [0.99, 0.8, 0.8, 0.8]
@@ -210,7 +211,7 @@ if model_type == 'MLP':
     os.environ["KMP_AFFINITY"] = "granularity=fine,verbose,compact,1,0"
 
     # train the model
-    model = MLP(X_train_norm, X_dev_norm, Y_train_norm, Y_dev_norm, L, nl, n_epochs, activation='swish',
+    model = MLP(X_train_norm, X_dev_norm, Y_train_norm, Y_dev_norm, L, nl, n_epochs, activation=activation,
                 alpha=alpha, lr_decay=lr_decay, decay_steps=decay_steps, staircase=staircase,
                 batch_size=batch_size, batch_norm=batch_norm)
     model.set_model_architecture()

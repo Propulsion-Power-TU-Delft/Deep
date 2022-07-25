@@ -12,15 +12,13 @@ from plot import *
 from utils.mlp import *
 from sklearn.utils import shuffle
 from sklearn.preprocessing import MinMaxScaler
-from smt.surrogate_models import KRG
-from smt.applications.mixed_integer import MixedIntegerSurrogateModel, FLOAT, INT, ENUM
 
 
 # user-defined input
 dev_size = 5                                 # percentage of total dataset used for the dev set
 test_size = 5                                # percentage of total dataset used for the test set
 model_type = 'MLP'                           # 'MLP' or 'GP'
-data_folder = 'MLP_MM_250k_rho_above_10'     # name of the folder collecting the dataset
+data_folder = 'MLP_2L_MM_250k_rho_below_10'     # name of the folder collecting the dataset
 data_type = '1phase'                         # '1phase', '2phase', or 'full'
 L = 2                                        # number of hidden layers
 n_epochs = 250                               # number of epochs used for training
@@ -107,23 +105,8 @@ doe = pickle.load(open(os.path.join(model_dir, 'doe.pkl'), 'rb'))
 # remove from the dataset the MLP architectures featuring low accuracy
 mask = np.logical_and(doe[:, -2] != 0, doe[:, -2] < 1e-5)
 
-# define and train the surrogate model
-xtypes = [INT, INT, FLOAT, (ENUM, 7)]
-bounds = [[2, 100], [4, 10], [1.0, 5.0], [0, 1, 2, 3, 4, 5, 6]]
-
-sm_accuracy = MixedIntegerSurrogateModel(xtypes=xtypes, xlimits=bounds, surrogate=KRG(theta0=[1e-2]))
-sm_accuracy.set_training_values(doe[mask, :-2], doe[mask, -2])
-sm_accuracy.train()
-accuracy_hat = sm_accuracy.predict_values(doe[mask, :-2])
-
-sm_comp_cost = MixedIntegerSurrogateModel(xtypes=xtypes, xlimits=bounds, surrogate=KRG(theta0=[1e-2]))
-sm_comp_cost.set_training_values(doe[mask, :-2], doe[mask, -1])
-sm_comp_cost.train()
-comp_cost_hat = sm_comp_cost.predict_values(doe[mask, :-2])
-
-# plot the space of objectives: accuracy, computational cost, and predictions of the surrogate model
+# plotting
 plot = Plot(os.path.join('plots', 'MLP', data_folder + '_' + data_type))
-plot.plot_objectives(doe[mask, -2], doe[mask, -1], accuracy_hat, comp_cost_hat)
-
+plot.plot_hyper_search(doe[mask, :-2], doe[mask, -2], doe[mask, -1])
 
 # ------------------------------------------------------------------------------------------------------------------- #
