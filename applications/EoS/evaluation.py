@@ -8,8 +8,6 @@
 # 2022 - TU Delft - All rights reserved
 ########################################################################################################################
 
-import time
-import pickle
 from utils.gp import *
 import seaborn as sns
 from utils.mlp import *

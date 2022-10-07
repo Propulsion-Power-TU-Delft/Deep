@@ -18,9 +18,9 @@ from sklearn.preprocessing import MinMaxScaler
 dev_size = 5                                 # percentage of total dataset used for the dev set
 test_size = 5                                # percentage of total dataset used for the test set
 model_type = 'MLP'                           # 'MLP' or 'GP'
-data_folder = 'MLP_2L_MM_250k_rho_below_10'     # name of the folder collecting the dataset
+data_folder = 'MLP_MM_250k_rho_above_10'     # name of the folder collecting the dataset
 data_type = '1phase'                         # '1phase', '2phase', or 'full'
-L = 2                                        # number of hidden layers
+L = 3                                        # number of hidden layers
 n_epochs = 250                               # number of epochs used for training
 batch_norm = 0                               # batch normalization strategy
 regularization = 0                           # regularization strategy
@@ -103,7 +103,7 @@ if flag_doe:
 doe = pickle.load(open(os.path.join(model_dir, 'doe.pkl'), 'rb'))
 
 # remove from the dataset the MLP architectures featuring low accuracy
-mask = np.logical_and(doe[:, -2] != 0, doe[:, -2] < 1e-5)
+mask = np.logical_and(doe[:, -2] != 0, doe[:, -2] < 1e-4)
 
 # plotting
 plot = Plot(os.path.join('plots', 'MLP', data_folder + '_' + data_type))

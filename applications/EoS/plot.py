@@ -221,8 +221,8 @@ class Plot:
                                (e_vec[-1] / 1e3 - e_vec[0] / 1e3),
                                alpha=0.2, label='database range'))
         ax.plot(self.rho_c, self.e_c / 1e3, 'o', color='black', label='critical point')
-        ax.set_xlabel('rho [kg/m3]')
-        ax.set_ylabel('e [kJ/kg]')
+        ax.set_xlabel(r'$\rho \, \mathrm{[kg/m^3]}$')
+        ax.set_ylabel(r'$e \, \mathrm{[kJ/kg]}$')
         ax.legend()
         
         fig.savefig(self.plot_dir + '/rho_e_chart.jpeg', dpi=400)
@@ -263,22 +263,23 @@ class Plot:
         """
         fig, ax = plt.subplots()
 
-        ax.scatter(accuracy, comp_cost, color='black', s=20, alpha=0.5)
+        ax.scatter(accuracy, comp_cost * 1e6, color='black', s=20, alpha=0.5)
+        ax.set_xscale('log')
+        ax.set_xlabel(r'$L(\Theta)$')
+        ax.set_ylabel(r'$C(\Theta) \, [\mu s]$')
 
         # retrieve the selected design point
         selected_point = np.asarray(plt.ginput(1, timeout=-1)).flatten()
-        pos = self.find_nearest_2D(accuracy, comp_cost, selected_point[0], selected_point[1])
+        pos = self.find_nearest_2D(accuracy, comp_cost * 1e6, selected_point[0], selected_point[1])
 
         print('\n# ------------------------------- SELECTED MLP ARCHITECTURE ------------------------------- #')
+        print("Index             : " + str(pos))
         print("Hyper-parameters  : " + str(hyperparameters[pos, :]))
         print("Dev set loss      : " + str(accuracy[pos]))
         print("Computational cost: " + str(comp_cost[pos]))
 
-        ax.scatter(accuracy[pos], comp_cost[pos], s=20, color='red', label='Selected MLP architecture')
-
+        ax.scatter(accuracy[pos], comp_cost[pos] * 1e6, s=20, color='red', label='Selected MLP architecture')
         plt.legend()
-        ax.set_xlabel(r'$L(\Theta)$')
-        ax.set_ylabel(r'$C(\Theta)$')
         fig.savefig(self.plot_dir + '/objectives_doe.jpeg', dpi=400)
         plt.close(fig)
 
